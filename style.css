@@ -1,0 +1,844 @@
+/* ===========================================================
+   Konstantin Subbotin — interactive CV
+   macOS-window styled single page, light/dark theme, a11y-first
+   =========================================================== */
+
+:root {
+  /* Tell the browser explicitly which native scheme this page is in right
+     now. Without this, Safari falls back to its own heuristics for things
+     like native form controls, and — combined with an OS in Dark Mode —
+     that guesswork can visually clash with our own custom light/dark
+     theme instead of matching the class we actually applied. */
+  color-scheme: light;
+  --bg-a: #eef1f8;
+  --bg-b: #dde4f5;
+  --bg-c: #e9e2f5;
+  --window-bg: rgba(255, 255, 255, 0.22);
+  --window-bg-header: rgba(255, 255, 255, 0.20);
+  --window-bg-solid: rgba(250, 251, 255, 0.96);
+  --window-border: rgba(20, 25, 40, 0.10);
+  --text-primary: #1b2130;
+  --text-secondary: #545e78;
+  --text-tertiary: #78829c;
+  --accent: #1f3b57;
+  --accent-soft: rgba(31, 59, 87, 0.10);
+  --chip-bg: rgba(31, 59, 87, 0.08);
+  --url-bar-bg: rgba(255, 255, 255, 0.30);
+  --shadow: 0 10px 40px rgba(30, 40, 70, 0.16);
+  --radius: 22px;
+  --focus-ring: 0 0 0 3px rgba(31, 59, 87, 0.35);
+  --transition-speed: 0.3s;
+  --glass-blur: 34px;
+  --glass-sat: 220%;
+  --glass-specular: rgba(200, 215, 255, 0.65);
+  --glass-specular-dim: rgba(255, 255, 255, 0.30);
+  --glass-sheen: rgba(255, 255, 255, 0.60);
+  --glass-edge-light: rgba(255, 255, 255, 0.85);
+  --glass-edge-dark: rgba(20, 25, 40, 0.06);
+  --blob-1: rgba(120, 150, 255, 0.45);
+  --blob-2: rgba(255, 150, 220, 0.38);
+  --blob-3: rgba(150, 255, 220, 0.30);
+}
+
+body.dark-mode {
+  color-scheme: dark;
+  --bg-a: #0d0e13;
+  --bg-b: #17181f;
+  --bg-c: #211a2e;
+  --window-bg: rgba(32, 33, 42, 0.42);
+  --window-bg-header: rgba(28, 29, 38, 0.40);
+  --window-bg-solid: rgba(22, 23, 30, 0.96);
+  --window-border: rgba(255, 255, 255, 0.09);
+  --text-primary: #f3f4f8;
+  --text-secondary: #b6bad0;
+  --text-tertiary: #8890ac;
+  --accent: #7fb0ff;
+  --accent-soft: rgba(127, 176, 255, 0.14);
+  --chip-bg: rgba(127, 176, 255, 0.12);
+  --url-bar-bg: rgba(255, 255, 255, 0.06);
+  --shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
+  --focus-ring: 0 0 0 3px rgba(127, 176, 255, 0.45);
+  --glass-specular: rgba(255, 255, 255, 0.30);
+  --glass-specular-dim: rgba(255, 255, 255, 0.06);
+  --glass-sheen: rgba(255, 255, 255, 0.16);
+  --glass-edge-light: rgba(255, 255, 255, 0.16);
+  --glass-edge-dark: rgba(0, 0, 0, 0.35);
+  --blob-1: rgba(90, 130, 255, 0.28);
+  --blob-2: rgba(255, 110, 190, 0.20);
+  --blob-3: rgba(110, 255, 200, 0.14);
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  /* Priority follows the likely audience: Windows recruiters/leads first
+     (native Segoe UI, no download needed), then macOS (native SF Pro via
+     -apple-system/BlinkMacSystemFont), then Android (Roboto). Inter is
+     only a webfont fallback for platforms with no strong native UI font
+     (Linux, older systems) — kept last so it never overrides a native
+     render, and never blocks first paint if the Google Fonts request
+     fails (it does, in some corporate/EU privacy setups). */
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, 'Inter', Arial, sans-serif;
+  color: var(--text-primary);
+  background: linear-gradient(135deg, var(--bg-a), var(--bg-b) 55%, var(--bg-c));
+  transition: background var(--transition-speed) ease, color var(--transition-speed) ease;
+  -webkit-font-smoothing: antialiased;
+  position: relative;
+}
+
+/* ---------- floating color blobs (refract through the glass) ---------- */
+
+.blob-field {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  /* z-index:-1 (rather than 0) was the original trick to keep this behind
+     body's own background without giving any ancestor its own stacking
+     context. Confirmed via live testing in Safari (thank you Kostya) that
+     Safari mishandles repaint for a NEGATIVE z-index fixed layer with
+     continuous CSS animations sitting behind an element whose background
+     is driven by a custom property — the body background gets "stuck" on
+     the old value. z-index:0 sidesteps that specific bug. It still stays
+     behind everything else: this is the first element in the document, so
+     among same-level (position + z-index:0) siblings it paints first,
+     i.e. behind, purely from source order — no negative index required.
+     Verified in Chromium that windows/topbar/etc. still render on top. */
+  z-index: 0;
+  pointer-events: none;
+}
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 1;
+  will-change: transform;
+}
+.blob-a {
+  width: 46vw; height: 46vw;
+  max-width: 560px; max-height: 560px;
+  top: -12vw; left: -8vw;
+  background: var(--blob-1);
+  animation: blob-drift-a 26s ease-in-out infinite;
+}
+.blob-b {
+  width: 38vw; height: 38vw;
+  max-width: 460px; max-height: 460px;
+  bottom: -10vw; right: -6vw;
+  background: var(--blob-2);
+  animation: blob-drift-b 32s ease-in-out infinite;
+}
+.blob-c {
+  width: 30vw; height: 30vw;
+  max-width: 380px; max-height: 380px;
+  top: 40vh; right: 18vw;
+  background: var(--blob-3);
+  animation: blob-drift-c 22s ease-in-out infinite;
+}
+@keyframes blob-drift-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(6vw, 8vh) scale(1.12); }
+}
+@keyframes blob-drift-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-7vw, -6vh) scale(1.08); }
+}
+@keyframes blob-drift-c {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-5vw, 6vh) scale(0.92); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .blob { animation: none; }
+}
+/* NOTE: .container is intentionally left position:static here. With
+   .blob-field pinned behind everything (see its own z-index comment
+   above — it's z-index:0 now, kept behind purely by being first in
+   source order), normal in-flow content already paints above it — no
+   extra stacking context needed. Promoting .container to
+   position:relative/z-index earlier trapped fixed-position descendants
+   (like a maximized window) inside its local stacking context, so they
+   could never rise above later siblings such as .max-backdrop. Keep it
+   static. */
+
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 0;
+  background: var(--accent);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 0 0 8px 0;
+  z-index: 999;
+}
+.skip-link:focus { left: 0; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+a { color: inherit; }
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 6px;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 16px 20px 40px;
+}
+
+/* ---------- top bar ---------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 4px 18px;
+}
+
+/* Centre of the top bar: a real "Download CV (PDF)" link instead of the old
+   decorative "konstantin.dev" text, which looked like a domain/repo link but
+   led nowhere. Styled as a quiet glass chip so it doesn't compete with the
+   window content. */
+/* Same height (40px), radius (14px) and glass treatment as the menu button
+   and theme toggle on either side, at every viewport width — so the three
+   top-bar controls read as one row. Only horizontal padding/font shrink on
+   narrow screens (see the 460px media query). */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 14px;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  text-decoration: none;
+  background: var(--window-bg);
+  border: 1px solid var(--window-border);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  box-shadow: var(--shadow), inset 0 1px 0 var(--glass-edge-light), inset 0 0 0 1px var(--glass-edge-dark);
+  transition: color 0.15s ease, transform 0.15s cubic-bezier(.34,1.4,.64,1), background var(--transition-speed) ease, border var(--transition-speed) ease;
+}
+.brand:hover {
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+.brand:active { transform: scale(0.96); }
+.brand svg { width: 14px; height: 14px; fill: currentColor; }
+
+.tabs-button, .dark-mode-toggle {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: var(--window-bg);
+  border: 1px solid var(--window-border);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow), inset 0 1px 0 var(--glass-edge-light), inset 0 0 0 1px var(--glass-edge-dark);
+  transition: transform 0.15s cubic-bezier(.34,1.4,.64,1), background var(--transition-speed) ease, border var(--transition-speed) ease;
+}
+.tabs-button:hover, .dark-mode-toggle:hover { transform: translateY(-1px); }
+.tabs-button:active, .dark-mode-toggle:active { transform: scale(0.92); }
+
+.dark-mode-toggle {
+  position: relative;
+  width: 62px;
+  justify-content: space-between;
+  padding: 0 9px;
+}
+.toggle-icon { font-size: 13px; line-height: 1; opacity: 0.7; }
+.toggle-knob {
+  position: absolute;
+  /* Vertically centered via top:0 + bottom:0 + margin:auto rather than a
+     fixed top offset. The toggle is 40px tall with a 1px border (38px
+     inner), so the old top:4px left 4px above the knob and 10px below.
+     This keeps transform free for the dark-mode slide (translateX). */
+  top: 0;
+  bottom: 0;
+  margin: auto 0;
+  /* left:7px + 1px border = 8px from the outer edge, matching the 8px
+     gap above and below. Dark-mode slide is 62 - 2*1 (border) - 2*7 - 24 = 22px. */
+  left: 7px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  transition: transform var(--transition-speed) cubic-bezier(.4,0,.2,1), background var(--transition-speed) ease;
+}
+.dark-mode .toggle-knob { transform: translateX(22px); }
+
+/* ---------- TOC drawer ---------- */
+
+.toc-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(10, 12, 20, 0.35);
+  backdrop-filter: blur(2px);
+  z-index: 40;
+}
+.toc-drawer {
+  position: fixed;
+  top: 0; right: 0;
+  height: 100%;
+  width: min(280px, 84vw);
+  background: var(--window-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  border-left: 1px solid var(--window-border);
+  box-shadow: var(--shadow), inset 1px 0 0 var(--glass-edge-light);
+  z-index: 50;
+  padding: 18px;
+  transform: translateX(0);
+  transition: background var(--transition-speed) ease, border var(--transition-speed) ease;
+}
+.toc-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  margin-bottom: 14px;
+  color: var(--text-primary);
+}
+.icon-btn {
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--chip-bg);
+}
+.toc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.toc-list a {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--text-primary);
+  font-size: 15px;
+  transition: background 0.15s ease;
+}
+.toc-list a:hover { background: var(--chip-bg); }
+
+/* ---------- window (macOS card) ---------- */
+
+.header { margin: 0 0 18px; }
+.main { display: flex; flex-direction: column; gap: 18px; }
+
+.window {
+  background: var(--window-bg);
+  border: 1px solid var(--window-border);
+  border-radius: var(--radius);
+  box-shadow:
+    var(--shadow),
+    inset 0 1px 0 var(--glass-edge-light),
+    inset 0 0 0 1px var(--glass-edge-dark),
+    inset 0 -12px 24px -18px rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  overflow: hidden;
+  position: relative;
+  isolation: isolate;
+  transition: background var(--transition-speed) ease, border var(--transition-speed) ease, box-shadow var(--transition-speed) ease, transform 0.25s cubic-bezier(.34,1.2,.4,1);
+  scroll-margin-top: 90px;
+}
+
+/* specular sheen sweeping across the top edge, like light catching curved glass.
+   Plain alpha compositing (no blend mode) so it reads consistently on both
+   light and dark, bright and dim backdrops. */
+.window::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(115deg,
+    var(--glass-sheen) 0%,
+    rgba(255, 255, 255, 0) 26%,
+    rgba(255, 255, 255, 0) 74%,
+    var(--glass-specular-dim) 100%);
+  opacity: 1;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 0.3s ease;
+}
+
+/* cursor-tracked highlight, like light refracting where you look */
+.window::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 0%), var(--glass-specular), rgba(255, 255, 255, 0) 68%);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+@media (hover: hover) {
+  .window:hover::after { opacity: 1; }
+}
+
+.window-header, .window-body { position: relative; z-index: 2; }
+
+.window.is-closed { display: none; }
+
+/* Maximize = focused reading mode: switch to a near-opaque surface so
+   nothing behind the card (other glass windows, blobs, dimmed backdrop)
+   can muddy the text. Only the outer chrome stays glassy. */
+.window.is-maximized {
+  position: fixed;
+  inset: 4vh 50%;
+  transform: translateX(-50%);
+  width: min(720px, 92vw);
+  max-height: 92vh;
+  overflow-y: auto;
+  z-index: 60;
+  background: var(--window-bg-solid);
+  backdrop-filter: saturate(140%);
+  -webkit-backdrop-filter: saturate(140%);
+}
+.window.is-maximized::before { opacity: 0.5; }
+.window.is-maximized::after { opacity: 0 !important; }
+
+.window-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  background: var(--window-bg-header);
+  border-bottom: 1px solid var(--window-border);
+}
+
+.window-buttons { display: flex; gap: 8px; flex-shrink: 0; }
+
+.window-button {
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  padding: 0;
+  border: 1px solid rgba(0,0,0,0.12);
+  position: relative;
+  background-image: radial-gradient(circle at 32% 28%, rgba(255,255,255,0.85), rgba(255,255,255,0) 55%);
+  background-blend-mode: overlay;
+  transition: transform 0.15s cubic-bezier(.34,1.56,.64,1), filter 0.15s ease, box-shadow 0.15s ease;
+}
+.window-buttons:hover .window-button { filter: brightness(1) saturate(1); }
+.window-button:hover { transform: scale(1.18); box-shadow: 0 0 8px rgba(0,0,0,0.18); }
+.window-button:active { transform: scale(0.8); }
+.window-button.close { background-color: #ff5f57; }
+.window-button.minimize { background-color: #ffbd2e; }
+.window-button.maximize { background-color: #28ca41; }
+.window-button::after {
+  content: '';
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; line-height: 1;
+  color: rgba(0,0,0,0.55);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.window-button.close::after { content: '×'; }
+.window-button.minimize::after { content: '–'; }
+.window-button.maximize::after { content: '+'; }
+.window-button:hover::after,
+.window-button:focus-visible::after { opacity: 1; }
+.window[data-no-close="true"] .window-button.close { opacity: 0.45; cursor: not-allowed; }
+
+.safari-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.nav-buttons { display: flex; gap: 5px; flex-shrink: 0; }
+.nav-button {
+  width: 26px; height: 26px;
+  border-radius: 7px;
+  background: var(--chip-bg);
+  color: var(--text-secondary);
+  font-size: 13px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s ease;
+}
+.nav-button:hover { background: var(--accent-soft); color: var(--accent); }
+
+.url-bar {
+  flex: 1;
+  min-width: 0;
+  background: var(--url-bar-bg);
+  border: 1px solid var(--window-border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.url-bar-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* collapse animation (minimize) */
+.window-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.35s cubic-bezier(.4,0,.2,1);
+}
+.window.is-minimized .window-body { grid-template-rows: 0fr; }
+.window-body-inner { overflow: hidden; min-height: 0; }
+
+.window-main {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 26px;
+  flex-wrap: wrap;
+}
+
+.photo {
+  flex-shrink: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  width: 130px;
+  height: 130px;
+}
+.photo-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.contacts { flex: 1; min-width: 220px; }
+.contactsLinksName-h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.contactsLinksPosition-h2 {
+  margin: 4px 0 16px;
+  font-size: 16px;
+  font-weight: 300;
+  color: var(--accent);
+}
+.contactsLinksAdress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.contactsLinksAdressItem-a {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--chip-bg);
+  padding: 6px 10px;
+  border-radius: 20px;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+.contactsLinksAdressItem-a svg { width: 14px; height: 14px; fill: currentColor; }
+.contactsLinksAdressItem-a:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.window-content { padding: 26px; }
+.window-content p { margin: 0 0 12px; line-height: 1.65; color: var(--text-secondary); font-size: 15px; }
+.window-content p:last-child { margin-bottom: 0; }
+.window-content strong { color: var(--text-primary); }
+
+.window-content--text { text-align: left; }
+
+/* ---------- experience ---------- */
+
+.job { padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--window-border); }
+.job:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.job-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.job-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.job-company { font-weight: 500; color: var(--text-secondary); }
+.job-dates {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-style: italic;
+  white-space: nowrap;
+}
+.job-client {
+  margin: 4px 0 10px;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--text-tertiary);
+}
+.job ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.job li { font-size: 14.5px; line-height: 1.6; color: var(--text-secondary); }
+
+/* ---------- skills grid ---------- */
+
+.skills-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  margin: 0;
+}
+.skills-grid dt {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.skills-grid dd {
+  margin: 0;
+  font-size: 14.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* ---------- footer ---------- */
+
+.footer {
+  text-align: center;
+  padding: 24px 0 8px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+.footer-link { text-decoration: none; }
+.footer-link:hover { color: var(--accent); }
+.footer-sep { margin: 0 8px; }
+
+/* ---------- back to top ---------- */
+
+.to-top {
+  position: fixed;
+  right: 20px;
+  bottom: 18px;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--window-bg);
+  border: 1px solid var(--window-border);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  box-shadow: var(--shadow), inset 0 1px 0 var(--glass-edge-light);
+  color: var(--text-primary);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 45;
+  opacity: 0;
+  transform: translateY(12px) scale(0.9);
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(.34,1.4,.64,1);
+}
+.to-top.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+.to-top:hover { transform: translateY(-2px) scale(1.05); }
+.to-top:active { transform: scale(0.9); }
+@media (max-width: 640px) {
+  .to-top { right: 14px; bottom: 14px; width: 42px; height: 42px; }
+}
+
+/* ---------- dock (reopen closed windows) ---------- */
+
+.dock {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 55;
+}
+.dock-chip {
+  background: var(--window-bg);
+  border: 1px solid var(--window-border);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  box-shadow: var(--shadow), inset 0 1px 0 var(--glass-edge-light);
+  border-radius: 20px;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: dock-in 0.25s ease;
+  transition: transform 0.15s ease;
+}
+.dock-chip:hover { transform: translateY(-2px); }
+@keyframes dock-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- toast ---------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--text-primary);
+  color: var(--bg-a);
+  padding: 10px 18px;
+  border-radius: 20px;
+  font-size: 13px;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  z-index: 70;
+}
+.toast.is-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ---------- maximize backdrop ---------- */
+
+.max-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(8, 10, 18, 0.45);
+  backdrop-filter: blur(3px);
+  z-index: 55;
+}
+
+/* ---------- reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  * { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
+}
+
+/* ---------- Safari-only glass correction ----------
+   Confirmed by direct testing (thank you Kostya): backdrop-filter itself
+   works fine in Safari — the blur is real. What differs is how WebKit
+   composites a semi-transparent solid background-color on top of that
+   blur versus how Chromium does it: the exact same rgba() alpha value
+   reads visibly more opaque/heavier in Safari, muting the color coming
+   through the glass far more than intended. This is a real rendering
+   difference between engines, not a bug with one right answer — so the
+   fix is to intentionally use lower alpha values for the window surfaces
+   specifically in Safari, so the two engines end up looking similar
+   despite computing alpha differently. This likely also explains the
+   very first complaint on this project (light mode not looking
+   transparent enough) — same root cause, just not diagnosed yet.
+
+   Also keeping the earlier saturate() reduction and the TOC/maximize
+   backdrop de-duplication (dropping backdrop-filter on the dim overlay
+   layers, since the surface on top of them already blurs) — both remain
+   reasonable, low-risk insurance against Safari's separate stacked-blur
+   quirk, even though they weren't the root cause of the background bug.
+
+   Detection: "-webkit-hyphens: none" is a real, still-valid property in
+   Safari/WebKit only — Chrome and Firefox don't recognize it, so this
+   @supports block resolves true in Safari and false everywhere else. It
+   does not depend on user-agent sniffing, doesn't touch markup, and adds
+   no new selectors — only tones down existing variables/rules for Safari. */
+@supports (-webkit-hyphens: none) {
+  :root {
+    --glass-sat: 120%;
+    --window-bg: rgba(255, 255, 255, 0.14);
+    --window-bg-header: rgba(255, 255, 255, 0.12);
+    --url-bar-bg: rgba(255, 255, 255, 0.18);
+  }
+  body.dark-mode {
+    --window-bg: rgba(32, 33, 42, 0.24);
+    --window-bg-header: rgba(28, 29, 38, 0.22);
+    --url-bar-bg: rgba(255, 255, 255, 0.05);
+  }
+  .toc-backdrop,
+  .max-backdrop {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 640px) {
+  .window-main { flex-direction: column; text-align: center; }
+  .contactsLinksAdress { justify-content: center; }
+  .job-head { flex-direction: column; }
+  /* The desktop rule centers via left:50% + translateX(-50%). Here the
+     left edge is pinned directly with inset instead (4vw from the
+     viewport edge), so that leftover translateX(-50%) must be cleared —
+     otherwise it keeps shifting the window an extra half-width to the
+     left on top of the new positioning, pushing it off-center/off-screen. */
+  .window.is-maximized { inset: 2vh 4vw; width: auto; max-height: 96vh; transform: none; }
+}
+
+@media (max-width: 460px) {
+  .window-buttons { display: none; }
+  /* Keep the CV download visible on phones (recruiters often open links
+     on mobile) — just make the chip more compact. */
+  .brand { padding: 0 12px; font-size: 12px; gap: 6px; }
+}
+
+@media (max-width: 380px) {
+  .nav-buttons { display: none; }
+
+  /* Very narrow phones (~280–380px). Below ~350px the header window's
+     contents physically stopped fitting: .contacts had a hard
+     min-width:220px, long unbreakable chips (email, LinkedIn) couldn't
+     wrap, and 20px container + 26px window padding on each side ate
+     ~30% of the width. Reclaim space and let content shrink/wrap. */
+  .container { padding-left: 12px; padding-right: 12px; }
+  .window-main { padding: 20px 14px; gap: 16px; }
+  .window-content { padding: 20px 16px; }
+  .contacts { min-width: 0; width: 100%; }
+  .contactsLinksName-h1 { font-size: 22px; }
+  .contactsLinksAdressItem-a {
+    max-width: 100%;
+    min-width: 0;
+    font-size: 12px;
+    padding: 6px 9px;
+  }
+  .contactsLinksAdressItem-a svg { flex-shrink: 0; }
+  /* Email and LinkedIn must stay fully readable (no ellipsis) — allow them
+     to break onto a second line inside the chip as a last resort. */
+  .contactsLinksAdressItem-a > span { min-width: 0; overflow-wrap: anywhere; }
+}
